@@ -11,7 +11,6 @@
     <artifactId>xxl-mq-client</artifactId>
     <packaging>jar</packaging>
 
-
     <dependencies>
 
         <!-- xxl-rpc-core -->
@@ -34,7 +33,6 @@
             <version>${spring.version}</version>
             <scope>provided</scope>
         </dependency>
-
     </dependencies>
 
 </project>

@@ -37,11 +37,10 @@ import java.util.concurrent.*;
  */
 @Component
 public class XxlMqBrokerImpl implements IXxlMqBroker, InitializingBean, DisposableBean {
+
     private final static Logger logger = LoggerFactory.getLogger(XxlMqBrokerImpl.class);
 
-
     // ---------------------- param ----------------------
-
 
     @Value("${xxl-mq.rpc.remoting.ip}")
     private String ip;
@@ -52,27 +51,31 @@ public class XxlMqBrokerImpl implements IXxlMqBroker, InitializingBean, Disposab
     @Value("${xxl.mq.log.logretentiondays}")
     private int logretentiondays;
 
-
     @Resource
     private IXxlMqMessageDao xxlMqMessageDao;
     @Resource
     private IXxlMqTopicService xxlMqTopicService;
     @Resource
     private IXxlMqTopicDao xxlMqTopicDao;
-
     @Resource
     private JavaMailSender mailSender;
     @Value("${spring.mail.username}")
     private String emailUserName;
 
-
     // ---------------------- broker server ----------------------
+    private LinkedBlockingQueue<XxlMqMessage> newMessageQueue = new LinkedBlockingQueue<XxlMqMessage>();
+    private LinkedBlockingQueue<XxlMqMessage> callbackMessageQueue = new LinkedBlockingQueue<XxlMqMessage>();
+
+    // ---------------------- broker thread ----------------------
+    private Map<String, Long> alarmMessageInfo = new ConcurrentHashMap<String, Long>();
+    private ExecutorService executorService = Executors.newCachedThreadPool();
+    private volatile boolean executorStoped = false;
+    private XxlRpcProviderFactory providerFactory;
 
     @Override
     public void afterPropertiesSet() throws Exception {
         // init server
         initServer();
-
         // init thread
         initThead();
     }
@@ -87,17 +90,7 @@ public class XxlMqBrokerImpl implements IXxlMqBroker, InitializingBean, Disposab
         destroyThread();
     }
 
-    // ---------------------- broker thread ----------------------
-
-    private LinkedBlockingQueue<XxlMqMessage> newMessageQueue = new LinkedBlockingQueue<XxlMqMessage>();
-    private LinkedBlockingQueue<XxlMqMessage> callbackMessageQueue = new LinkedBlockingQueue<XxlMqMessage>();
-    private Map<String, Long> alarmMessageInfo = new ConcurrentHashMap<String, Long>();
-
-    private ExecutorService executorService = Executors.newCachedThreadPool();
-    private volatile boolean executorStoped = false;
-
     public void initThead() throws Exception {
-
         /**
          * async save message, mult thread  (by event)
          */
@@ -132,7 +125,7 @@ public class XxlMqBrokerImpl implements IXxlMqBroker, InitializingBean, Disposab
                     // end save
                     List<XxlMqMessage> otherMessageList = new ArrayList<>();
                     int drainToNum = newMessageQueue.drainTo(otherMessageList);
-                    if (drainToNum> 0) {
+                    if (drainToNum > 0) {
                         xxlMqMessageDao.save(otherMessageList);
                     }
 
@@ -150,7 +143,7 @@ public class XxlMqBrokerImpl implements IXxlMqBroker, InitializingBean, Disposab
                     while (!executorStoped) {
                         try {
                             XxlMqMessage message = callbackMessageQueue.take();
-                            if (message!=null) {
+                            if (message != null) {
                                 // load
                                 List<XxlMqMessage> messageList = new ArrayList<>();
                                 messageList.add(message);
@@ -165,10 +158,10 @@ public class XxlMqBrokerImpl implements IXxlMqBroker, InitializingBean, Disposab
                                 xxlMqMessageDao.updateStatus(messageList);
 
                                 // fill alarm info
-                                for (XxlMqMessage alarmItem: messageList) {
+                                for (XxlMqMessage alarmItem : messageList) {
                                     if (XxlMqMessageStatus.FAIL.name().equals(alarmItem.getStatus())) {
                                         Long failCount = alarmMessageInfo.get(alarmItem.getTopic());
-                                        failCount = failCount!=null?failCount++:1;
+                                        failCount = failCount != null ? failCount++ : 1;
                                         alarmMessageInfo.put(alarmItem.getTopic(), failCount);
                                     }
                                 }
@@ -192,7 +185,6 @@ public class XxlMqBrokerImpl implements IXxlMqBroker, InitializingBean, Disposab
                 }
             });
         }
-
 
         /**
          * auto retry message "retryCount-1 + status change"  (by cycle, 1/60s)
@@ -257,9 +249,9 @@ public class XxlMqBrokerImpl implements IXxlMqBroker, InitializingBean, Disposab
 
                             // alarm
                             List<XxlMqTopic> topicList = xxlMqTopicDao.findAlarmByTopic(new ArrayList<String>(alarmMessageInfoTmp.keySet()));
-                            if (topicList!=null && topicList.size()>0) {
-                                for (XxlMqTopic mqTopic: topicList) {
-                                    if (mqTopic.getAlarmEmails()!=null && mqTopic.getAlarmEmails().trim().length()>0) {
+                            if (topicList != null && topicList.size() > 0) {
+                                for (XxlMqTopic mqTopic : topicList) {
+                                    if (mqTopic.getAlarmEmails() != null && mqTopic.getAlarmEmails().trim().length() > 0) {
                                         Long failCount = alarmMessageInfoTmp.get(mqTopic.getTopic());
 
                                         String[] toEmailList = null;
@@ -349,8 +341,8 @@ public class XxlMqBrokerImpl implements IXxlMqBroker, InitializingBean, Disposab
                     try {
                         // find new topic, set messageInfo
                         List<String> topicList = xxlMqMessageDao.findNewTopicList();
-                        if (topicList!=null && topicList.size()>0) {
-                            for (String topic:topicList) {
+                        if (topicList != null && topicList.size() > 0) {
+                            for (String topic : topicList) {
                                 XxlMqTopic newTopic = new XxlMqTopic();
                                 newTopic.setTopic(topic);
                                 xxlMqTopicService.add(newTopic);
@@ -374,27 +366,24 @@ public class XxlMqBrokerImpl implements IXxlMqBroker, InitializingBean, Disposab
         });
 
     }
-    public void destroyThread(){
+
+    // ---------------------- broker server ----------------------
+
+    public void destroyThread() {
         executorStoped = true;
         executorService.shutdownNow();
     }
 
-
-    // ---------------------- broker server ----------------------
-
-    private XxlRpcProviderFactory providerFactory;
-
     public void initServer() throws Exception {
 
         // address, static registry
-        ip = (ip!=null&&ip.trim().length()>0)?ip:IpUtil.getIp();
+        ip = (ip != null && ip.trim().length() > 0) ? ip : IpUtil.getIp();
         String address = IpUtil.getIpPort(ip, port);
 
         XxlCommonRegistryData xxlCommonRegistryData = new XxlCommonRegistryData();
         xxlCommonRegistryData.setKey(IXxlMqBroker.class.getName());
         xxlCommonRegistryData.setValue(address);
         XxlCommonRegistryServiceImpl.staticRegistryData = xxlCommonRegistryData;
-
 
         // init server
         providerFactory = new XxlRpcProviderFactory();
@@ -413,7 +402,6 @@ public class XxlMqBrokerImpl implements IXxlMqBroker, InitializingBean, Disposab
             providerFactory.stop();
         }
     }
-
 
     // ---------------------- broker api ----------------------
 

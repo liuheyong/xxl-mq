@@ -1,15 +1,12 @@
 CREATE database if NOT EXISTS `xxl-mq` default character set utf8 collate utf8_general_ci;
 use `xxl-mq`;
 
-
-
 CREATE TABLE `xxl_mq_biz` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `bizName` varchar(64) NOT NULL,
   `order` int(11) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-
 
 CREATE TABLE `xxl_mq_topic` (
   `topic` varchar(255) NOT NULL,
@@ -18,7 +15,6 @@ CREATE TABLE `xxl_mq_topic` (
   `alarmEmails` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`topic`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-
 
 CREATE TABLE `xxl_mq_message` (
   `id` bigint(11) NOT NULL AUTO_INCREMENT,
@@ -37,7 +33,6 @@ CREATE TABLE `xxl_mq_message` (
   KEY `I_t_g_f_s` (`topic`,`group`,`status`,`effectTime`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-
 CREATE TABLE `xxl_mq_common_registry` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `key` varchar(255) NOT NULL COMMENT '注册Key',
@@ -45,7 +40,6 @@ CREATE TABLE `xxl_mq_common_registry` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `I_k` (`key`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-
 
 CREATE TABLE `xxl_mq_common_registry_data` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -56,11 +50,9 @@ CREATE TABLE `xxl_mq_common_registry_data` (
   UNIQUE KEY `I_k_v` (`key`,`value`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-
 CREATE TABLE `xxl_mq_common_registry_message` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `data` text NOT NULL COMMENT '消息内容',
   `addTime` datetime NOT NULL COMMENT '添加时间',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-
